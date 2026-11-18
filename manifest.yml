@@ -1,0 +1,128 @@
+# ReleaseGate — Forge app manifest (skeleton, pre-registration)
+#
+# Field reference (verified against developer.atlassian.com Forge
+# manifest reference, 2026-11-19):
+#   rovo:agent   -> manifest-reference/modules/rovo-agent
+#   action       -> manifest-reference/modules/rovo-action
+#                   (Rovo actions are declared under the `action` module;
+#                   the agent references them by key in its `actions` list)
+#   jira:issuePanel / jira:adminPage -> modules reference pages
+#
+# BEFORE FIRST DEPLOY:
+#   1. Run `forge register` — it replaces the placeholder app.id below.
+#   2. The prompt-as-resource form requires Forge CLI >= 10.6.0.
+#   3. Items marked TODO(verify-at-deploy) could not be confirmed from
+#      the public docs alone and must be checked on the dev site.
+modules:
+  rovo:agent:
+    - key: releasegate-agent
+      name: ReleaseGate
+      description: >-
+        Release-readiness officer: assesses a Jira release issue and
+        renders a GO / CAUTION / NO-GO verdict backed by cited evidence
+        from linked issues, pull requests and builds. Can create
+        follow-up subtasks and post the verdict as a comment.
+      prompt: resource:agent-resources;prompts/releasegate-prompt.txt
+      conversationStarters:
+        - Assess release REL-102 — can it ship?
+        - What is blocking this release?
+        - Post the ReleaseGate verdict on the release issue
+      actions:
+        - assess-release
+        - create-follow-up-subtasks
+        - post-verdict-comment
+  action:
+    - key: assess-release
+      name: Assess release readiness
+      function: fn-assess-release
+      actionVerb: GET
+      description: >-
+        Gathers a release issue's linked issues, fix-version scope,
+        pull request states and build results, runs the ReleaseGate
+        rule engine with the project's configured thresholds, and
+        returns a GO / CAUTION / NO-GO verdict with cited evidence and
+        suggested follow-up subtasks. Use this whenever a user asks
+        whether a release can ship or what is blocking it.
+      inputs:
+        releaseIssueKey:
+          title: Release issue key
+          type: string
+          required: true
+          description: Key of the Jira release issue to assess, for example REL-102.
+    - key: create-follow-up-subtasks
+      name: Create follow-up subtasks
+      function: fn-create-follow-ups
+      actionVerb: CREATE
+      description: >-
+        Creates one Jira subtask on the release issue for each
+        follow-up suggested by the latest ReleaseGate assessment
+        (resolve a blocker, chase a stale issue, fix a failing build,
+        and so on). Only invoke when the user explicitly asks to
+        create the follow-ups.
+      inputs:
+        releaseIssueKey:
+          title: Release issue key
+          type: string
+          required: true
+          description: Key of the release issue the subtasks are created under.
+    - key: post-verdict-comment
+      name: Post verdict comment
+      function: fn-post-verdict-comment
+      actionVerb: CREATE
+      description: >-
+        Re-runs the ReleaseGate assessment for a release issue and
+        posts the full verdict — label, score, evidence with
+        references, and suggested follow-ups — as a comment on the
+        release issue. Only invoke when the user explicitly asks to
+        post or record the verdict.
+      inputs:
+        releaseIssueKey:
+          title: Release issue key
+          type: string
+          required: true
+          description: Key of the release issue to comment on.
+  jira:issuePanel:
+    - key: releasegate-issue-panel
+      resource: issue-panel
+      resolver:
+        function: resolver
+      render: native
+      title: ReleaseGate verdict
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+  jira:adminPage:
+    - key: releasegate-config-page
+      resource: admin-config
+      resolver:
+        function: resolver
+      render: native
+      title: ReleaseGate configuration
+      useAsConfig: true
+  function:
+    - key: resolver
+      handler: index.resolver
+    - key: fn-assess-release
+      handler: index.assessRelease
+    - key: fn-create-follow-ups
+      handler: index.createFollowUpSubtasks
+    - key: fn-post-verdict-comment
+      handler: index.postVerdictComment
+resources:
+  - key: agent-resources
+    path: resource/agent
+  - key: issue-panel
+    path: static/issue-panel/src
+  - key: admin-config
+    path: static/admin-config/src
+permissions:
+  scopes:
+    - read:jira-work
+    - write:jira-work
+    # TODO(verify-at-deploy): confirm on the dev site whether reading
+    # development information (PR / build status via dev-status REST)
+    # needs any additional scope for this app.
+app:
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/REPLACE-WITH-FORGE-REGISTER-OUTPUT
